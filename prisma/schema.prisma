@@ -1,0 +1,326 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum BillingInterval {
+  DAY
+  WEEK
+  MONTH
+  YEAR
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PAID
+  PENDING
+  FAILED
+  REFUNDED
+}
+
+enum NotificationType {
+  BILLING_REMINDER
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  GENERAL
+}
+
+enum BillingSubscriptionStatus {
+  INCOMPLETE
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+  TRIALING
+}
+
+enum BillingInvoiceStatus {
+  PAID
+  OPEN
+  VOID
+  UNCOLLECTIBLE
+  FAILED
+}
+
+model User {
+  id              String    @id @default(uuid())
+  clerkId         String?   @unique
+  name            String
+  email           String    @unique
+  passwordHash    String
+  avatarUrl       String?
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  refreshTokens           RefreshToken[]
+  subscriptions           Subscription[]
+  payments                Payment[]
+  notifications           Notification[]
+  devices                 Device[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
+
+  billingCustomer     BillingCustomer?     @relation("UserBillingCustomer")
+  billingSubscription BillingSubscription? @relation("UserBillingSubscription")
+
+  billingInvoices BillingInvoice[]
+
+  @@index([email])
+  @@index([deletedAt])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  familyId  String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([userId, familyId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+}
+
+model EmailVerificationToken {
+  id     String @id @default(uuid())
+  userId String
+
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([usedAt])
+}
+
+model PasswordResetToken {
+  id     String @id @default(uuid())
+  userId String
+
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([usedAt])
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  slug      String   @unique
+  icon      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@index([slug])
+}
+
+model Subscription {
+  id              String             @id @default(uuid())
+  userId          String
+  categoryId      String
+  name            String
+  description     String?
+  price           Decimal            @db.Decimal(12, 2)
+  currency        String             @default("INR")
+  billingInterval BillingInterval
+  billingCount    Int                @default(1)
+  startDate       DateTime
+  renewalDate     DateTime
+  status          SubscriptionStatus @default(ACTIVE)
+  logoUrl         String?
+  websiteUrl      String?
+  reminderEnabled Boolean            @default(true)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  deletedAt       DateTime?
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category      Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  payments      Payment[]
+  notifications Notification[]
+
+  @@index([userId])
+  @@index([categoryId])
+  @@index([userId, status])
+  @@index([userId, renewalDate])
+  @@index([deletedAt])
+}
+
+model Payment {
+  id             String @id @default(uuid())
+  userId         String
+  subscriptionId String
+
+  amount   Decimal @db.Decimal(12, 2)
+  currency String
+
+  paidAt DateTime
+  status PaymentStatus @default(PAID)
+
+  transactionId String?
+
+  createdAt DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([transactionId])
+  @@index([userId])
+  @@index([subscriptionId])
+  @@index([userId, paidAt])
+  @@index([status])
+}
+
+model Notification {
+  id             String           @id @default(uuid())
+  userId         String
+  subscriptionId String?
+  type           NotificationType
+  title          String
+  message        String
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, readAt])
+  @@index([createdAt])
+  @@index([subscriptionId])
+}
+
+model Device {
+  id     String @id @default(uuid())
+  userId String
+
+  deviceId  String
+  pushToken String?
+  platform  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceId])
+  @@index([userId])
+}
+
+model BillingCustomer {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  stripeCustomerId String   @unique
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user         User                 @relation("UserBillingCustomer", fields: [userId], references: [id], onDelete: Cascade)
+  subscription BillingSubscription?
+
+  invoices BillingInvoice[]
+
+  @@index([stripeCustomerId])
+}
+
+model BillingSubscription {
+  id                   String                    @id @default(uuid())
+  userId               String                    @unique
+  billingCustomerId    String                    @unique
+  stripeSubscriptionId String                    @unique
+  stripePriceId        String
+  plan                 String
+  status               BillingSubscriptionStatus
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean                   @default(false)
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  invoices             BillingInvoice[]
+
+  user            User            @relation("UserBillingSubscription", fields: [userId], references: [id], onDelete: Cascade)
+  billingCustomer BillingCustomer @relation(fields: [billingCustomerId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([stripePriceId])
+}
+
+model StripeWebhookEvent {
+  id          String    @id @default(uuid())
+  eventId     String    @unique
+  eventType   String
+  processedAt DateTime?
+  failedAt    DateTime?
+  error       String?
+  createdAt   DateTime  @default(now())
+
+  @@index([eventType])
+  @@index([createdAt])
+}
+
+model BillingInvoice {
+  id                    String  @id @default(uuid())
+  userId                String
+  billingCustomerId     String?
+  billingSubscriptionId String?
+
+  stripeInvoiceId       String  @unique
+  stripeCustomerId      String
+  stripeSubscriptionId  String?
+  stripePaymentIntentId String?
+
+  amountDue  Decimal              @db.Decimal(12, 2)
+  amountPaid Decimal              @db.Decimal(12, 2)
+  currency   String
+  status     BillingInvoiceStatus
+
+  hostedInvoiceUrl String?
+  invoicePdf       String?
+
+  paidAt      DateTime?
+  dueDate     DateTime?
+  periodStart DateTime?
+  periodEnd   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  billingCustomer     BillingCustomer?     @relation(fields: [billingCustomerId], references: [id], onDelete: SetNull)
+  billingSubscription BillingSubscription? @relation(fields: [billingSubscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([billingCustomerId])
+  @@index([billingSubscriptionId])
+  @@index([stripeCustomerId])
+  @@index([stripeSubscriptionId])
+  @@index([status])
+  @@index([createdAt])
+}
