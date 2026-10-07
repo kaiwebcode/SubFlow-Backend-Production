@@ -2,14 +2,26 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import dotenv from "dotenv";
 
-dotenv.config({
-  path: ".env.development.local",
-});
+const nodeEnv = process.env.NODE_ENV ?? "development";
+
+const envFiles: Record<"development" | "test" | "production", string> = {
+  development: ".env.development.local",
+  test: ".env.test.local",
+  production: ".env.production.local",
+};
+
+const envFile = envFiles[nodeEnv as keyof typeof envFiles];
+
+if (envFile) {
+  dotenv.config({
+    path: envFile,
+  });
+}
 
 const connectionString = process.env.DATABASE_URL;
 
 if (!connectionString) {
-  throw new Error("DATABASE_URL is not defined");
+  throw new Error(`DATABASE_URL is not defined for NODE_ENV=${nodeEnv}`);
 }
 
 const adapter = new PrismaPg({
@@ -83,6 +95,7 @@ const main = async () => {
 main()
   .catch((error) => {
     console.error("Category seed failed:", error);
+
     process.exitCode = 1;
   })
   .finally(async () => {
