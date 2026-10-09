@@ -156,7 +156,12 @@ export const stripeWebhookController = async (
         signature,
         env.STRIPE_WEBHOOK_SECRET,
       );
-    } catch {
+    } catch (error) {
+      console.error(
+        "[Stripe webhook verification]",
+        error instanceof Error ? error.message : "Unknown verification error",
+      );
+
       throw new AppError(
         "Invalid Stripe webhook signature",
         400,
